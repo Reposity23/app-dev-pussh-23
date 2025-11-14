@@ -51,8 +51,34 @@ void main() async {
 
   final cascade = Cascade().add(apiRouter.call).add(staticHandler);
 
+  // CORS middleware
+  Middleware corsMiddleware = createMiddleware(
+    requestHandler: (Request request) {
+      if (request.method == 'OPTIONS') {
+        return Response.ok('', headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        });
+      }
+      return null;
+    },
+    responseHandler: (Response response) {
+      return response.change(headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
+      });
+    },
+  );
+
   final server = await shelf_io.serve(
-    const Pipeline().addMiddleware(logRequests()).addHandler(cascade.handler),
+    const Pipeline()
+        .addMiddleware(corsMiddleware)
+        .addMiddleware(logRequests())
+        .addHandler(cascade.handler),
     '0.0.0.0', 
     5000,
   );
