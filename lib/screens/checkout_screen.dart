@@ -72,19 +72,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
 
     final appProvider = Provider.of<AppProvider>(context, listen: false);
-    final fullAddress = '${_nameController.text}, ${_phoneController.text}, '
-        '${_addressController.text}, ${_streetController.text}, ${_postalCodeController.text}';
-
-    await appProvider.updateUserAddress(fullAddress);
+    
+    final success = await appProvider.saveAddress(
+      name: _nameController.text,
+      phone: _phoneController.text,
+      address: _addressController.text,
+      street: _streetController.text,
+      postalCode: _postalCodeController.text,
+    );
 
     setState(() {
-      _hasAddress = true;
+      _hasAddress = success;
       _isLoading = false;
     });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Address saved successfully!')),
+        SnackBar(
+          content: Text(success ? 'Address saved successfully!' : 'Failed to save address'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
       );
     }
   }
@@ -454,6 +461,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ),
         const SizedBox(height: 16),
+        _buildPaymentOption(
+          icon: Icons.account_balance_wallet,
+          label: 'GCash',
+          color: const Color(0xFF007DFF),
+          onTap: () => _processPayment('GCash'),
+        ),
+        const SizedBox(height: 12),
         _buildPaymentOption(
           icon: Icons.credit_card,
           label: 'Visa',

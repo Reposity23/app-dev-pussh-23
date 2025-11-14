@@ -42,6 +42,50 @@ class User {
       );
 }
 
+class Address {
+  final String id;
+  final String userId;
+  final String name;
+  final String phone;
+  final String address;
+  final String street;
+  final String postalCode;
+  final DateTime createdAt;
+
+  Address({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.phone,
+    required this.address,
+    required this.street,
+    required this.postalCode,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'name': name,
+        'phone': phone,
+        'address': address,
+        'street': street,
+        'postal_code': postalCode,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory Address.fromJson(Map<String, dynamic> json) => Address(
+        id: json['id'],
+        userId: json['user_id'],
+        name: json['name'],
+        phone: json['phone'],
+        address: json['address'],
+        street: json['street'],
+        postalCode: json['postal_code'],
+        createdAt: DateTime.parse(json['created_at']),
+      );
+}
+
 class Order {
   final String id;
   final String toyId;
@@ -54,6 +98,7 @@ class Order {
   final DateTime? updatedAt;
   final String department;
   final double totalAmount;
+  final String? addressId;
 
   Order({
     required this.id,
@@ -67,6 +112,7 @@ class Order {
     this.updatedAt,
     required this.department,
     required this.totalAmount,
+    this.addressId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -81,6 +127,7 @@ class Order {
         'updated_at': updatedAt?.toIso8601String(),
         'department': department,
         'total_amount': totalAmount,
+        'address_id': addressId,
       };
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(
@@ -96,7 +143,10 @@ class Order {
             ? DateTime.parse(json['updated_at'])
             : null,
         department: json['department'],
-        totalAmount: json['total_amount'].toDouble(),
+        totalAmount: (json['total_amount'] is int) 
+            ? (json['total_amount'] as int).toDouble() 
+            : json['total_amount'].toDouble(),
+        addressId: json['address_id'],
       );
 
   Order copyWith({
@@ -111,6 +161,7 @@ class Order {
     DateTime? updatedAt,
     String? department,
     double? totalAmount,
+    String? addressId,
   }) {
     return Order(
       id: id ?? this.id,
@@ -124,6 +175,7 @@ class Order {
       updatedAt: updatedAt ?? this.updatedAt,
       department: department ?? this.department,
       totalAmount: totalAmount ?? this.totalAmount,
+      addressId: addressId ?? this.addressId,
     );
   }
 }

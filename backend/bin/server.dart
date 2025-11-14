@@ -26,6 +26,7 @@ void main() async {
   // API Endpoints
   apiRouter.post('/api/login', _loginHandler);
   apiRouter.post('/api/signup', _signupHandler);
+  apiRouter.post('/api/save-address', _saveAddressHandler);
   apiRouter.post('/api/orders', _createOrderHandler);
   apiRouter.get('/api/orders', _getOrdersHandler);
   apiRouter.post('/api/orders/clear', _clearOrdersHandler);
@@ -69,7 +70,7 @@ Future<Response> _processNextOrderHandler(Request request) async {
     return Response.badRequest(body: jsonEncode({'action': 'error', 'led': 'all'}));
   }
 
-  final nextOrder = _db.getOldestPendingOrderForPerson(personName);
+  final nextOrder = await _db.getOldestPendingOrderForPerson(personName);
 
   if (nextOrder == null) {
     print('Scan from $personName, but they have no pending orders.');
@@ -101,7 +102,7 @@ Future<Response> _fastForwardHandler(Request request) async {
     return Response(403, body: jsonEncode({'error': 'Invalid admin password'}));
   }
 
-  final order = _db.getOrderById(orderId);
+  final order = await _db.getOrderById(orderId);
   if (order == null) {
     return Response.notFound(jsonEncode({'error': 'Order not found'}));
   }
@@ -124,7 +125,7 @@ Future<Response> _fastForwardHandler(Request request) async {
 // --- Fast-Forward Fulfillment Simulation (30 seconds total) ---
 void _simulateFastForwardFulfillment(Order order) {
   Future.delayed(const Duration(seconds: 10), () async {
-    var currentOrder = _db.getOrderById(order.id);
+    var currentOrder = await _db.getOrderById(order.id);
     if (currentOrder == null) return;
 
     var onTheWayOrder = currentOrder.copyWith(status: 'ON_THE_WAY', updatedAt: DateTime.now());
@@ -134,7 +135,7 @@ void _simulateFastForwardFulfillment(Order order) {
     _broadcastToClients(result1.toJson());
 
     Future.delayed(const Duration(seconds: 10), () async {
-      var currentOrder2 = _db.getOrderById(order.id);
+      var currentOrder2 = await _db.getOrderById(order.id);
       if (currentOrder2 == null) return;
 
       var deliveredOrder = currentOrder2.copyWith(status: 'DELIVERED', updatedAt: DateTime.now());
@@ -144,7 +145,7 @@ void _simulateFastForwardFulfillment(Order order) {
       _broadcastToClients(result2.toJson());
 
       Future.delayed(const Duration(seconds: 10), () async {
-        var currentOrder3 = _db.getOrderById(order.id);
+        var currentOrder3 = await _db.getOrderById(order.id);
         if (currentOrder3 == null) return;
 
         var completedOrder = currentOrder3.copyWith(status: 'COMPLETED', updatedAt: DateTime.now());
@@ -159,7 +160,7 @@ void _simulateFastForwardFulfillment(Order order) {
 void _simulateFulfillment(Order order) {
   // PROCESSING -> ON_THE_WAY
   Future.delayed(const Duration(seconds: 3), () async {
-    var currentOrder = _db.getOrderById(order.id);
+    var currentOrder = await _db.getOrderById(order.id);
     if (currentOrder == null || currentOrder.status != 'PROCESSING') return;
 
     var onTheWayOrder = currentOrder.copyWith(status: 'ON_THE_WAY', updatedAt: DateTime.now());
@@ -170,7 +171,7 @@ void _simulateFulfillment(Order order) {
 
     // ON_THE_WAY -> DELIVERED
     Future.delayed(const Duration(seconds: 3), () async {
-      var currentOrder2 = _db.getOrderById(order.id);
+      var currentOrder2 = await _db.getOrderById(order.id);
       if (currentOrder2 == null || currentOrder2.status != 'ON_THE_WAY') return;
 
       var deliveredOrder = currentOrder2.copyWith(status: 'DELIVERED', updatedAt: DateTime.now());
@@ -181,7 +182,7 @@ void _simulateFulfillment(Order order) {
 
       // DELIVERED -> COMPLETED
       Future.delayed(const Duration(seconds: 3), () async {
-        var currentOrder3 = _db.getOrderById(order.id);
+        var currentOrder3 = await _db.getOrderById(order.id);
         if (currentOrder3 == null || currentOrder3.status != 'DELIVERED') return;
 
         var completedOrder = currentOrder3.copyWith(status: 'COMPLETED', updatedAt: DateTime.now());
@@ -202,17 +203,22 @@ Future<Response> _createOrderHandler(Request request) async {
     if (payload == null) return Response.unauthorized(jsonEncode({'error': 'Invalid token'}));
     final body = await request.readAsString();
     final data = jsonDecode(body);
+    
+    final userId = payload['userId'];
+    final latestAddress = await _db.getLatestAddressByUserId(userId);
+    
     final order = Order(
       id: _uuid.v4(),
       toyId: data['toy_id'],
       toyName: data['toy_name'],
       category: data['category'],
-      rfidUid: data['rfid_uid'], // This is the Toy's UID, used for placing orders
+      rfidUid: data['rfid_uid'],
       assignedPerson: data['assigned_person'],
       status: 'PENDING',
       createdAt: DateTime.now(),
       department: data['department'],
       totalAmount: (data['total_amount'] ?? 0).toDouble(),
+      addressId: latestAddress?.id,
     );
     await _db.createOrder(order);
     _broadcastToClients(order.toJson());
@@ -226,14 +232,14 @@ Future<Response> _clearOrdersHandler(Request request) async {
 }
 
 Future<Response> _getOrdersHandler(Request request) async {
-  final orders = _db.getAllOrders();
+  final orders = await _db.getAllOrders();
   return Response.ok(jsonEncode(orders.map((o) => o.toJson()).toList()), headers: {'Content-Type': 'application/json'});
 }
 
 Future<Response> _loginHandler(Request request) async {
   final payload = await request.readAsString();
   final data = jsonDecode(payload);
-  final user = _db.getUserByUsername(data['username']);
+  final user = await _db.getUserByUsername(data['username']);
   if (user == null || !AuthService.verifyPassword(data['password'], user.passwordHash)) {
     return Response.unauthorized(jsonEncode({'error': 'Invalid credentials'}));
   }
@@ -255,6 +261,32 @@ Future<Response> _signupHandler(Request request) async {
   await _db.createUser(user);
   final token = AuthService.generateToken(user.id, user.username, user.department);
   return Response(201, body: jsonEncode({'user': user.toSafeJson(), 'token': token}), headers: {'Content-Type': 'application/json'});
+}
+
+Future<Response> _saveAddressHandler(Request request) async {
+  final authHeader = request.headers['authorization'];
+  if (authHeader == null) return Response.unauthorized(jsonEncode({'error': 'Unauthorized'}));
+  
+  final token = authHeader.replaceFirst('Bearer ', '');
+  final payload = AuthService.verifyToken(token);
+  if (payload == null) return Response.unauthorized(jsonEncode({'error': 'Invalid token'}));
+  
+  final body = await request.readAsString();
+  final data = jsonDecode(body);
+  
+  final address = Address(
+    id: _uuid.v4(),
+    userId: payload['userId'],
+    name: data['name'],
+    phone: data['phone'],
+    address: data['address'],
+    street: data['street'],
+    postalCode: data['postal_code'],
+    createdAt: DateTime.now(),
+  );
+  
+  await _db.createAddress(address);
+  return Response(201, body: jsonEncode(address.toJson()), headers: {'Content-Type': 'application/json'});
 }
 
 void _broadcastToClients(Map<String, dynamic> data) {

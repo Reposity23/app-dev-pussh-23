@@ -15,7 +15,7 @@ The Smart Toy Store is a full-stack, real-time order processing and factory mana
   - Serves REST API endpoints
   - Provides WebSocket for real-time updates
   - Serves static dashboard files
-  - Persistent JSON database for users and orders
+  - PostgreSQL database (Neon) for persistent data storage
 
 - **Dashboard**: HTML5/JavaScript web interface
   - Real-time order monitoring
@@ -24,6 +24,31 @@ The Smart Toy Store is a full-stack, real-time order processing and factory mana
   - Clear history functionality
 
 ## Recent Changes
+
+### 2025-11-14 - Phase 1: Complete Checkout Flow Implementation
+- **Database Migration**: Migrated from JSON file storage to PostgreSQL 3.0.2
+  - Created `users`, `addresses`, and `orders` tables
+  - Added address_id foreign key to orders table
+  - Configured SSL connection with Neon PostgreSQL database
+  
+- **Backend Enhancements**:
+  - Added `/api/save-address` endpoint for saving customer addresses
+  - Updated `/api/orders` endpoint to automatically link latest address to orders
+  - Migrated all database operations to use async PostgreSQL queries
+  
+- **Flutter App Updates**:
+  - Updated API URLs from old Replit link to new: `https://4e389144-5ecd-4c83-a08c-c08d9a157758-00-3tnwrczd5j0o.janeway.replit.dev/`
+  - Added `saveAddress()` method to AppProvider for saving addresses to database
+  - Enhanced checkout screen with proper address validation
+  - Added **GCash** payment option alongside Visa, Mastercard, and PayPal
+  - Checkout button is disabled until user fills in all address fields
+  
+- **Address Form Fields**:
+  - Name
+  - Phone Number
+  - Address
+  - Street
+  - Postal Code
 
 ### 2025-11-02 - Replit Environment Setup
 - Installed Dart 3.8 SDK
@@ -74,17 +99,22 @@ The system was originally designed to run on:
 - All devices (mobile app, dashboard, Arduino) connected to this network
 
 ### Database
-- Uses JSON files for persistent storage
-- Located in `backend/data/`
-- Files: `users.json`, `orders.json`
+- **PostgreSQL** (Neon-hosted) for persistent storage
+- Tables:
+  - `users` - User accounts and authentication
+  - `addresses` - Customer shipping addresses
+  - `orders` - Order records with address references
+- Environment variable: `DATABASE_URL`
 
 ### API Endpoints
 - POST `/api/login` - User authentication
 - POST `/api/signup` - User registration
-- POST `/api/orders` - Create new order
+- POST `/api/save-address` - Save customer shipping address
+- POST `/api/orders` - Create new order (with address)
 - GET `/api/orders` - Get all orders
 - POST `/api/orders/clear` - Clear order history
 - POST `/api/process-next` - Process next order for a worker
+- POST `/api/fast-forward` - Fast-forward order delivery simulation
 - GET `/ws` - WebSocket connection for real-time updates
 
 ### Order Workflow

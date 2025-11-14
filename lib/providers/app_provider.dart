@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/order.dart';
 import '../services/auth_service.dart';
@@ -188,6 +190,43 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> saveAddress({
+    required String name,
+    required String phone,
+    required String address,
+    required String street,
+    required String postalCode,
+  }) async {
+    if (_currentUser?.token == null) return false;
+
+    try {
+      final response = await http.post(
+        Uri.parse('${config['apiUrl']}/save-address'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${_currentUser!.token!}',
+        },
+        body: jsonEncode({
+          'name': name,
+          'phone': phone,
+          'address': address,
+          'street': street,
+          'postal_code': postalCode,
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        final fullAddress = '$name, $phone, $address, $street, $postalCode';
+        await updateUserAddress(fullAddress);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Save address error: $e');
+      return false;
+    }
+  }
+
   List<Order> getOrdersByStatus(String status) {
     return _orders.where((order) => order.status == status).toList();
   }
@@ -221,8 +260,8 @@ class AppProvider extends ChangeNotifier {
   }
 
   Map<String, dynamic> get config => {
-    'apiUrl': 'https://e4911329-22eb-40b7-b0a7-540081a8b44a-00-bhd1x96jlyix.picard.replit.dev/api',
-    'wsUrl': 'wss://e4911329-22eb-40b7-b0a7-540081a8b44a-00-bhd1x96jlyix.picard.replit.dev/ws',
+    'apiUrl': 'https://4e389144-5ecd-4c83-a08c-c08d9a157758-00-3tnwrczd5j0o.janeway.replit.dev/api',
+    'wsUrl': 'wss://4e389144-5ecd-4c83-a08c-c08d9a157758-00-3tnwrczd5j0o.janeway.replit.dev/ws',
   };
 
   @override

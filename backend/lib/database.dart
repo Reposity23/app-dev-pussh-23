@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
+import 'package:postgres/postgres.dart';
 import 'models.dart';
 
 class Database {
@@ -7,120 +7,265 @@ class Database {
   factory Database() => _instance;
   Database._internal();
 
-  final String _dataPath = 'data';
-  final Map<String, User> _users = {};
-  final Map<String, Order> _orders = {};
+  late Connection _connection;
 
   Future<void> initialize() async {
-    final dir = Directory(_dataPath);
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
+    final databaseUrl = Platform.environment['DATABASE_URL'];
+    if (databaseUrl == null) {
+      throw Exception('DATABASE_URL not set');
     }
-    await _loadUsers();
-    await _loadOrders();
+
+    print('Connecting to database...');
+    final uri = Uri.parse(databaseUrl);
+    final endpoint = Endpoint(
+      host: uri.host,
+      port: uri.port > 0 ? uri.port : 5432,
+      database: uri.pathSegments.isNotEmpty ? uri.pathSegments[0] : 'postgres',
+      username: uri.userInfo.split(':')[0],
+      password: uri.userInfo.split(':')[1],
+    );
+
+    _connection = await Connection.open(
+      endpoint,
+      settings: ConnectionSettings(
+        sslMode: SslMode.require,
+        connectTimeout: Duration(seconds: 30),
+      ),
+    );
+
+    print('Database connected successfully');
+    await _createTables();
+    print('Tables created successfully');
   }
 
-  Future<void> _loadUsers() async {
-    try {
-      final file = File('$_dataPath/users.json');
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        if (content.trim().isEmpty) return;
-        final dynamic data = jsonDecode(content);
-        if (data is List) {
-          for (var json in data) {
-            final user = User.fromJson(json);
-            _users[user.id] = user;
-          }
-        }
-      }
-    } catch (e) {
-      print('Error loading users: $e');
-    }
-  }
+  Future<void> _createTables() async {
+    await _connection.execute('''
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        department TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    ''');
 
-  Future<void> _loadOrders() async {
-    try {
-      final file = File('$_dataPath/orders.json');
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        if (content.trim().isEmpty) return;
-        final dynamic data = jsonDecode(content);
-        if (data is List) {
-          for (var json in data) {
-            final order = Order.fromJson(json);
-            _orders[order.id] = order;
-          }
-        }
-      }
-    } catch (e) {
-      print('Error loading orders: $e');
-    }
-  }
+    await _connection.execute('''
+      CREATE TABLE IF NOT EXISTS addresses (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        address TEXT NOT NULL,
+        street TEXT NOT NULL,
+        postal_code TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    ''');
 
-  Future<void> _saveUsers() async {
-    final file = File('$_dataPath/users.json');
-    final data = _users.values.map((u) => u.toJson()).toList();
-    await file.writeAsString(jsonEncode(data));
-  }
-
-  Future<void> _saveOrders() async {
-    final file = File('$_dataPath/orders.json');
-    final data = _orders.values.map((o) => o.toJson()).toList();
-    await file.writeAsString(jsonEncode(data));
+    await _connection.execute('''
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        toy_id TEXT NOT NULL,
+        toy_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        rfid_uid TEXT NOT NULL,
+        assigned_person TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP,
+        department TEXT NOT NULL,
+        total_amount DECIMAL(10, 2) NOT NULL,
+        address_id TEXT REFERENCES addresses(id)
+      )
+    ''');
   }
 
   Future<void> clearAllOrders() async {
-    _orders.clear();
-    await _saveOrders();
+    await _connection.execute('DELETE FROM orders');
   }
 
   Future<User> createUser(User user) async {
-    _users[user.id] = user;
-    await _saveUsers();
+    await _connection.execute(
+      '''INSERT INTO users (id, username, email, password_hash, department, created_at) 
+         VALUES (\$1, \$2, \$3, \$4, \$5, \$6)''',
+      parameters: [
+        user.id,
+        user.username,
+        user.email,
+        user.passwordHash,
+        user.department,
+        user.createdAt,
+      ],
+    );
     return user;
   }
 
-  User? getUserByUsername(String username) {
-    try {
-      return _users.values.firstWhere((user) => user.username == username);
-    } catch (e) {
-      return null;
-    }
+  Future<User?> getUserByUsername(String username) async {
+    final result = await _connection.execute(
+      'SELECT * FROM users WHERE username = \$1',
+      parameters: [username],
+    );
+    
+    if (result.isEmpty) return null;
+    
+    final row = result.first;
+    return User(
+      id: row[0] as String,
+      username: row[1] as String,
+      email: row[2] as String,
+      passwordHash: row[3] as String,
+      department: row[4] as String,
+      createdAt: row[5] as DateTime,
+    );
+  }
+
+  Future<Address> createAddress(Address address) async {
+    await _connection.execute(
+      '''INSERT INTO addresses (id, user_id, name, phone, address, street, postal_code, created_at) 
+         VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8)''',
+      parameters: [
+        address.id,
+        address.userId,
+        address.name,
+        address.phone,
+        address.address,
+        address.street,
+        address.postalCode,
+        address.createdAt,
+      ],
+    );
+    return address;
+  }
+
+  Future<Address?> getLatestAddressByUserId(String userId) async {
+    final result = await _connection.execute(
+      'SELECT * FROM addresses WHERE user_id = \$1 ORDER BY created_at DESC LIMIT 1',
+      parameters: [userId],
+    );
+    
+    if (result.isEmpty) return null;
+    
+    final row = result.first;
+    return Address(
+      id: row[0] as String,
+      userId: row[1] as String,
+      name: row[2] as String,
+      phone: row[3] as String,
+      address: row[4] as String,
+      street: row[5] as String,
+      postalCode: row[6] as String,
+      createdAt: row[7] as DateTime,
+    );
   }
 
   Future<Order> createOrder(Order order) async {
-    _orders[order.id] = order;
-    await _saveOrders();
+    await _connection.execute(
+      '''INSERT INTO orders (id, toy_id, toy_name, category, rfid_uid, assigned_person, 
+         status, created_at, department, total_amount, address_id) 
+         VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11)''',
+      parameters: [
+        order.id,
+        order.toyId,
+        order.toyName,
+        order.category,
+        order.rfidUid,
+        order.assignedPerson,
+        order.status,
+        order.createdAt,
+        order.department,
+        order.totalAmount,
+        order.addressId,
+      ],
+    );
     return order;
   }
 
   Future<Order?> updateOrder(Order order) async {
-    if (!_orders.containsKey(order.id)) return null;
-    final existingOrder = _orders[order.id]!;
-    if (existingOrder.status == 'COMPLETED') {
+    final existing = await getOrderById(order.id);
+    if (existing == null) return null;
+    if (existing.status == 'COMPLETED') {
       print('Attempted to update a completed order. No action taken.');
-      return null; 
+      return null;
     }
-    _orders[order.id] = order;
-    await _saveOrders();
+
+    await _connection.execute(
+      '''UPDATE orders SET status = \$1, updated_at = \$2 WHERE id = \$3''',
+      parameters: [order.status, order.updatedAt, order.id],
+    );
     return order;
   }
 
-  Order? getOrderById(String id) {
-      return _orders[id];
+  Future<Order?> getOrderById(String id) async {
+    final result = await _connection.execute(
+      'SELECT * FROM orders WHERE id = \$1',
+      parameters: [id],
+    );
+    
+    if (result.isEmpty) return null;
+    
+    final row = result.first;
+    return Order(
+      id: row[0] as String,
+      toyId: row[1] as String,
+      toyName: row[2] as String,
+      category: row[3] as String,
+      rfidUid: row[4] as String,
+      assignedPerson: row[5] as String,
+      status: row[6] as String,
+      createdAt: row[7] as DateTime,
+      updatedAt: row[8] as DateTime?,
+      department: row[9] as String,
+      totalAmount: (row[10] is int) ? (row[10] as int).toDouble() : row[10] as double,
+      addressId: row[11] as String?,
+    );
   }
 
-  Order? getOldestPendingOrderForPerson(String personName) {
-    final pendingOrders = _orders.values
-        .where((o) => o.status == 'PENDING' && o.assignedPerson == personName)
-        .toList();
-    if (pendingOrders.isEmpty) return null;
-    pendingOrders.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return pendingOrders.first;
+  Future<Order?> getOldestPendingOrderForPerson(String personName) async {
+    final result = await _connection.execute(
+      '''SELECT * FROM orders 
+         WHERE status = 'PENDING' AND assigned_person = \$1 
+         ORDER BY created_at ASC LIMIT 1''',
+      parameters: [personName],
+    );
+    
+    if (result.isEmpty) return null;
+    
+    final row = result.first;
+    return Order(
+      id: row[0] as String,
+      toyId: row[1] as String,
+      toyName: row[2] as String,
+      category: row[3] as String,
+      rfidUid: row[4] as String,
+      assignedPerson: row[5] as String,
+      status: row[6] as String,
+      createdAt: row[7] as DateTime,
+      updatedAt: row[8] as DateTime?,
+      department: row[9] as String,
+      totalAmount: (row[10] is int) ? (row[10] as int).toDouble() : row[10] as double,
+      addressId: row[11] as String?,
+    );
   }
 
-  List<Order> getAllOrders() {
-    return _orders.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  Future<List<Order>> getAllOrders() async {
+    final result = await _connection.execute(
+      'SELECT * FROM orders ORDER BY created_at DESC',
+    );
+    
+    return result.map((row) => Order(
+      id: row[0] as String,
+      toyId: row[1] as String,
+      toyName: row[2] as String,
+      category: row[3] as String,
+      rfidUid: row[4] as String,
+      assignedPerson: row[5] as String,
+      status: row[6] as String,
+      createdAt: row[7] as DateTime,
+      updatedAt: row[8] as DateTime?,
+      department: row[9] as String,
+      totalAmount: (row[10] is int) ? (row[10] as int).toDouble() : row[10] as double,
+      addressId: row[11] as String?,
+    )).toList();
   }
 }
