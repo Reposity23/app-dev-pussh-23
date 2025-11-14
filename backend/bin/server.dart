@@ -233,16 +233,21 @@ Future<Response> _createOrderHandler(Request request) async {
     final userId = payload['userId'];
     final latestAddress = await _db.getLatestAddressByUserId(userId);
     
+    // Validate required fields
+    if (data['toy_id'] == null || data['toy_name'] == null || data['category'] == null) {
+      return Response.badRequest(body: jsonEncode({'error': 'Missing required fields: toy_id, toy_name, category'}));
+    }
+    
     final order = Order(
       id: _uuid.v4(),
-      toyId: data['toy_id'],
-      toyName: data['toy_name'],
-      category: data['category'],
-      rfidUid: data['rfid_uid'],
-      assignedPerson: data['assigned_person'],
+      toyId: data['toy_id'] as String,
+      toyName: data['toy_name'] as String,
+      category: data['category'] as String,
+      rfidUid: (data['rfid_uid'] ?? 'NONE') as String,
+      assignedPerson: (data['assigned_person'] ?? 'Unassigned') as String,
       status: 'PENDING',
       createdAt: DateTime.now(),
-      department: data['department'],
+      department: (data['department'] ?? 'General') as String,
       totalAmount: (data['total_amount'] ?? 0).toDouble(),
       addressId: latestAddress?.id,
     );
