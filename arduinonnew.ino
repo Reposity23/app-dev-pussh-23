@@ -1,0 +1,341 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include <WiFiClientSecure.h>
+#include <EEPROM.h>
+
+// --- Hardware & Network Configuration ---
+#define SS_PIN 21
+#define RST_PIN 22
+
+// --- WiFi Credentials ---
+const char* ssid = "radeon900";
+const char* password = "rabal131";
+
+// --- Cloud Server Configuration ---
+const char* serverName = "d92f80ca-1745-4bae-b188-5cc5f7d4e5ea-00-3sqnd8jhn3zho.kirk.replit.dev";
+
+// --- LED Pins ---
+const int LED_TOY_GUNS = 25;
+const int LED_ACTION_FIGURES = 27;
+const int LED_DOLLS = 26;
+const int LED_PUZZLES = 33;
+
+// --- Buzzer ---
+const int BUZZER_PIN = 14;
+
+// --- RFID ---
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// EEPROM positions
+#define EEPROM_SIZE 200
+#define ADDR_UID_MARL 0
+#define ADDR_UID_RENZ 40
+
+String uid_marl = "";
+String uid_renz = "";
+
+// --- Card Mapping ---
+struct PersonMapping {
+  String physicalUid;
+  const char* personName;
+};
+
+PersonMapping personMappings[] = {
+  {"A9 6C 6A 05", "John Marwin"},
+  {"01 02 03 04", "Jannalyn"},
+  {"", "Marl Prince"},
+  {"", "Renz"}
+};
+const int numMappings = 4;
+
+// --- Prototypes ---
+void setupWiFi();
+void setupHardware();
+void turnOffAllLEDs();
+void indicateSystemReady();
+void indicateError();
+String getScannedUID();
+String getPersonFromPhysicalUID(String physicalUid);
+void saveUIDToEEPROM(int startAddr, String uid);
+String readUIDFromEEPROM(int startAddr, int maxLen);
+void handleScan(String personName);
+void executeLedAction(const char* action, const char* category);
+int getLedPinForCategory(const char* category);
+void blinkLed(int pin, int times, int duration);
+void buzzBuzzer(int duration_ms);
+void resetRFID();
+
+// ====================================================
+// SETUP
+// ====================================================
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Load stored UIDs
+  uid_marl = readUIDFromEEPROM(ADDR_UID_MARL, 40);
+  uid_renz = readUIDFromEEPROM(ADDR_UID_RENZ, 40);
+
+  personMappings[2].physicalUid = uid_marl;
+  personMappings[3].physicalUid = uid_renz;
+
+  Serial.println("\n[SETUP] RFID Cloud System");
+  Serial.print("[STORED] Marl UID: ");
+  Serial.println(uid_marl);
+  Serial.print("[STORED] Renz UID: ");
+  Serial.println(uid_renz);
+
+  setupHardware();
+  setupWiFi();
+  indicateSystemReady();
+}
+
+// ====================================================
+// LOOP
+// ====================================================
+unsigned long lastScanTime = 0;
+const unsigned long idleTimeout = 10000; // 10s
+
+void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[WIFI] Reconnecting...");
+    indicateError();
+    setupWiFi();
+  }
+
+  if (millis() - lastScanTime > idleTimeout) {
+    resetRFID();
+    lastScanTime = millis();
+  }
+
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    lastScanTime = millis();
+
+    String physicalUid = getScannedUID();
+    Serial.print("[SCAN] UID: ");
+    Serial.println(physicalUid);
+
+    // ------------------------
+    // AUTO-REGISTER LOGIC
+    // ------------------------
+
+    if (uid_marl == "") {
+      uid_marl = physicalUid;
+      personMappings[2].physicalUid = uid_marl;
+      saveUIDToEEPROM(ADDR_UID_MARL, uid_marl);
+      Serial.println("[REGISTERED] Marl Prince UID saved!");
+      buzzBuzzer(200);
+    }
+    else if (uid_renz == "" && physicalUid != uid_marl) {
+      uid_renz = physicalUid;
+      personMappings[3].physicalUid = uid_renz;
+      saveUIDToEEPROM(ADDR_UID_RENZ, uid_renz);
+      Serial.println("[REGISTERED] Renz UID saved!");
+      buzzBuzzer(200);
+    }
+
+    String personName = getPersonFromPhysicalUID(physicalUid);
+
+    if (personName != "") {
+      buzzBuzzer(50);
+      handleScan(personName);
+    } else {
+      Serial.println("[ERROR] Unknown UID");
+      indicateError();
+    }
+
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
+    delay(300);
+  }
+}
+
+// ====================================================
+// FUNCTIONS
+// ====================================================
+
+void saveUIDToEEPROM(int startAddr, String uid) {
+  for (int i = 0; i < uid.length(); i++)
+    EEPROM.write(startAddr + i, uid[i]);
+
+  EEPROM.write(startAddr + uid.length(), 0);
+  EEPROM.commit();
+}
+
+String readUIDFromEEPROM(int startAddr, int maxLen) {
+  char data[50];
+  for (int i = 0; i < maxLen; i++) {
+    data[i] = EEPROM.read(startAddr + i);
+    if (data[i] == 0) break;
+  }
+  return String(data);
+}
+
+void buzzBuzzer(int duration_ms) {
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(duration_ms);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void handleScan(String personName) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClientSecure client;
+  HTTPClient http;
+  client.setInsecure();
+
+  String url = String("https://") + serverName + "/api/process-next";
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+
+  StaticJsonDocument<128> doc;
+  doc["person_name"] = personName;
+  String payload;
+  serializeJson(doc, payload);
+
+  Serial.print("[POST] ");
+  Serial.println(payload);
+
+  int httpCode = http.POST(payload);
+
+  if (httpCode > 0) {
+    String responsePayload = http.getString();
+    Serial.print("[HTTPS] Response: ");
+    Serial.println(responsePayload);
+
+    StaticJsonDocument<256> responseDoc;
+    deserializeJson(responseDoc, responsePayload);
+    executeLedAction(responseDoc["action"], responseDoc["led"]);
+  } else {
+    Serial.print("[HTTPS] Error: ");
+    Serial.println(http.errorToString(httpCode));
+    indicateError();
+  }
+
+  http.end();
+}
+
+void executeLedAction(const char* action, const char* category) {
+  int targetLed = getLedPinForCategory(category);
+  if (strcmp(action, "processing_success") == 0) {
+    blinkLed(targetLed, 3, 200);
+  } else if (strcmp(action, "no_pending_orders") == 0) {
+    indicateSystemReady();
+  } else {
+    indicateError();
+  }
+}
+
+void setupHardware() {
+  pinMode(LED_TOY_GUNS, OUTPUT);
+  pinMode(LED_ACTION_FIGURES, OUTPUT);
+  pinMode(LED_DOLLS, OUTPUT);
+  pinMode(LED_PUZZLES, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  turnOffAllLEDs();
+  SPI.begin();
+  rfid.PCD_Init();
+}
+
+void setupWiFi() {
+  Serial.print("[WIFI] Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n[WIFI] Connected!");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\n[WIFI] FAILED");
+  }
+}
+
+void resetRFID() {
+  Serial.println("[RFID] Resetting...");
+  SPI.end();
+  delay(10);
+  SPI.begin();
+  rfid.PCD_Init();
+}
+
+String getScannedUID() {
+  String uid = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (i > 0) uid += " ";
+    if (rfid.uid.uidByte[i] < 0x10) uid += "0";
+    uid += String(rfid.uid.uidByte[i], HEX);
+  }
+  uid.toUpperCase();
+  return uid;
+}
+
+String getPersonFromPhysicalUID(String physicalUid) {
+  for (int i = 0; i < numMappings; i++) {
+    if (physicalUid == personMappings[i].physicalUid)
+      return String(personMappings[i].personName);
+  }
+  return "";
+}
+
+int getLedPinForCategory(const char* category) {
+  if (strcmp(category, "Toy Guns") == 0) return LED_TOY_GUNS;
+  if (strcmp(category, "Action Figures") == 0) return LED_ACTION_FIGURES;
+  if (strcmp(category, "Dolls") == 0) return LED_DOLLS;
+  if (strcmp(category, "Puzzles") == 0) return LED_PUZZLES;
+  return -1;
+}
+
+void turnOffAllLEDs() {
+  digitalWrite(LED_TOY_GUNS, LOW);
+  digitalWrite(LED_ACTION_FIGURES, LOW);
+  digitalWrite(LED_DOLLS, LOW);
+  digitalWrite(LED_PUZZLES, LOW);
+}
+
+void blinkLed(int pin, int times, int duration) {
+  if (pin == -1) return;
+  for (int i = 0; i < times; i++) {
+    digitalWrite(pin, HIGH);
+    delay(duration);
+    digitalWrite(pin, LOW);
+    delay(duration);
+  }
+}
+
+void indicateSystemReady() {
+  turnOffAllLEDs();
+  for (int i = 0; i < 2; i++) {
+    digitalWrite(LED_TOY_GUNS, HIGH);
+    digitalWrite(LED_ACTION_FIGURES, HIGH);
+    digitalWrite(LED_DOLLS, HIGH);
+    digitalWrite(LED_PUZZLES, HIGH);
+    delay(100);
+    turnOffAllLEDs();
+    delay(100);
+  }
+}
+
+void indicateError() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_TOY_GUNS, HIGH);
+    digitalWrite(LED_ACTION_FIGURES, HIGH);
+    digitalWrite(LED_DOLLS, HIGH);
+    digitalWrite(LED_PUZZLES, HIGH);
+    delay(80);
+    turnOffAllLEDs();
+    delay(80);
+  }
+}
