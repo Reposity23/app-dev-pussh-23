@@ -10,11 +10,11 @@
 #define RST_PIN 22
 
 // --- WiFi Credentials ---
-const char* ssid = "john_m";
-const char* password = "123456789";
+const char* ssid = "radeon900";
+const char* password = "rabal131";
 
 // --- Cloud Server Configuration ---
-const char* serverName = "912dcb36-25f8-4bc1-b60e-c7b4e4ca564c-00-1k5bfypkvk6lm.pike.replit.dev";
+const char* serverName = "d92f80ca-1745-4bae-b188-5cc5f7d4e5ea-00-3sqnd8jhn3zho.kirk.replit.dev";
 
 // --- LED Pins ---
 const int LED_TOY_GUNS = 25;
