@@ -1,0 +1,349 @@
+CRITICAL INSTRUCTIONS: TO SAVE TIME, YOU MUST BREAK EVERYTHING DOWN INTO 8 TASKS ONLY. 8 TASKS ONLY!
+
+EVERY TIME YOU ARE DONE WITH A SPECIFIC TASK, YOU MUST PROVIDE A STATUS UPDATE in the following format. Specify the exact files you created or modified:
+
+TASK COMPLETED:
+
+[Name of the Task Completed, e.g., Task 1: Employee Dashboard (em_dash.html)]
+
+Files Modified/Created:
+
+dashboard/em_dash.html
+
+dashboard/css/em_dash.css
+
+dashboard/js/em_dash.js
+
+REMAINING TASKS:
+
+[Task 2: Admin Dashboard (dashboard.html) Enhancements]
+
+[Task 3: Flutter Order Simulation & Tracking (current_order.dart)]
+
+[Task 4: Flutter Payment & Checkout Logic]
+
+[Task 5: Flutter "Me" Profile Core & Order Management]
+
+[Task 6: Flutter Post-Purchase Logic (Refunds & Ratings)]
+
+[Task 7: Flutter User Engagement Features]
+
+[Task 8: Flutter Home Screen & Notifications]
+
+NOW, BEGIN TASKS:
+
+Task 1: Create Employee Dashboard (em_dash.html)
+File: Create a new file named em_dash.html in the dashboard/ directory. You should also create corresponding CSS (dashboard/css/em_dash.css) and JavaScript (dashboard/js/em_dash.js) files and link them properly in the HTML.
+
+Objective: Build a dashboard where employees (e.g., John Marwin, Prince, etc.) can see their individual performance and order queue.
+
+Requirements:
+
+Employee Name: Display the logged-in employee's name at the top.
+
+Pending Orders Table:
+
+Display a table with columns: Toy Name and Status.
+
+Populate this table with orders assigned to this employee that have a status of "pending" or "cancel".
+
+Status Logic:
+
+pending: The 'pending' status indicates the order is confirmed and ready for RFID scanning.
+
+cancel: The 'cancel' status means the buyer canceled the order via the "Me" profile section in the app.
+
+Processed Orders Table:
+
+Display a second table with columns: Toy Name and Status.
+
+Populate this with orders that are "delivered", "returned", or "on the way".
+
+Total Revenue Display:
+
+Display the total revenue for this specific employee.
+
+Revenue Logic: The revenue must only be tallied and added to this total after the buyer has successfully paid for the item. If an item is "returned", its price must be subtracted from this total revenue.
+
+Returned Items Display:
+
+Display the total count of "returned" items associated with this employee.
+
+Technical Implementation:
+
+Use JavaScript (e.g., fetch API) in em_dash.js to dynamically load this data from the backend (presumably from your Dart server at backend/bin/server.dart).
+
+Ensure all JavaScript code includes try...catch blocks for error handling during API calls.
+
+Use semantic HTML5 for the page structure.
+
+Task 2: Enhance Admin Dashboard (dashboard.html) with Fast-Forward Feature
+File: Modify the existing dashboard/index.html file.
+
+Objective: Add an admin-only feature to simulate the rapid completion of an order's delivery timeline.
+
+Requirements:
+
+Add Button: In the items list or table within dashboard/index.html, add a new button next to each item labeled "Fast Forward Delivery".
+
+Password Prompt: When that button is clicked, prompt the admin with a textbox:
+
+ENTER ADMIN PASSWORD:
+
+Password Check: Check if the entered password is exactly TIP123@APPDEV.
+
+Confirmation Logic:
+
+If the password is correct, immediately trigger the fast-forward event. This 24-hour simulation will be fast-forwarded and should only take 30 seconds to complete.
+
+If the password is wrong, show an "Access Denied" error message.
+
+Technical Implementation:
+
+This "fast forward" action must be communicated from the dashboard/index.html's JavaScript to the backend server.
+
+The backend server must then instantly push this "fast forward" command (e.g., via the WebSocket service defined in lib/services/websocket_service.dart) to all connected Flutter app clients.
+
+This ensures the current_order.dart screen in the app (see Task 3) receives the command and accelerates its own timeline to match the 30-second completion.
+
+Task 3: Implement Flutter Order Simulation & Tracking (current_order.dart)
+File: Create a new Dart file: lib/screens/current_order.dart.
+
+Objective: Simulate a real-time order tracking timeline for the buyer after a successful purchase.
+
+Trigger: After a successful payment (either from the real PayPal button or the simulated Visa/Mastercard), the app must immediately navigate the user to this new current_order.dart screen.
+
+Requirements:
+
+UI: This screen must be a StatefulWidget to manage the live-updating timeline.
+
+Timeline Display: Display a vertical timeline of order statuses. Use the following example as the template for all statuses, in this exact chronological order:
+
+Today 10:58 AM
+
+Parcel is ready to be claimed
+
+Today 09:42 AM
+
+Your parcel is in transit to (buyer's saved address)
+
+Today 09:38 AM
+
+Delivery driver has been assigned
+
+Nov 06, 06:22 AM
+
+Your parcel has arrived at the delivery hub: San Juan Hub
+
+Nov 04, 04:44 AM
+
+Parcel has departed from sorting facility
+
+Nov 04, 04:41 AM
+
+Parcel is loaded into truck, to leave sorting center soon
+
+Nov 04, 02:12 AM
+
+Parcel has arrived at sorting facility: SOC 6
+
+Nov 04, 00:46 AM
+
+Parcel has departed from sorting facility
+
+Nov 03, 09:33 PM
+
+Parcel has arrived at sorting facility
+
+Nov 03, 09:33 PM
+
+Parcel is loaded into truck, to leave first mile hub soon
+
+Nov 03, 08:46 PM
+
+Parcel has arrived at sorting facility: MFM Ugong
+
+Nov 03, 08:23 PM
+
+Parcel has arrived at sorting facility
+
+Nov 03, 06:29 PM
+
+Parcel has departed from sorting facility
+
+Nov 03, 06:29 PM
+
+Parcel is loaded into truck, to leave first mile hub soon
+
+Nov 03, 04:17 PM
+
+Parcel has arrived at sorting facility: Tondo Hub
+
+Nov 03, 02:59 PM
+
+Your parcel has been picked up by our logistics partner
+
+Nov 03, 08:55 AM
+
+Seller is preparing to ship your parcel
+
+Nov 01, 12:18 PM
+
+Order is placed
+
+Time/Date Logic:
+
+The time and date for each status must be up-to-date and displayed in real-time.
+
+Use 12-hour format (AM/PM).
+
+CRITICAL: All times must be in Philippines Time (PHST, UTC+8). Use the intl package for formatting (e.g., DateFormat('MMM dd, hh:mm a', 'en_PH')) and the timezone package to ensure PHST is used.
+
+Simulation Logic:
+
+The delivery time intervals must be based on random times. The entire process from "Order is placed" to "Parcel is ready to be claimed" should simulate a 24-hour period. Generate random, chronologically-ordered timestamps within that 24-hour window for each status update.
+
+Fast-Forward Sync: This screen MUST listen for the fast-forward command from the Admin Dashboard (Task 2). When received, it must accelerate this 24-hour timeline to complete in 30 seconds, updating the UI rapidly to show all statuses being hit.
+
+Task 4: Implement Flutter Payment & Checkout Logic
+Files: Create lib/screens/checkout_screen.dart. Modify lib/screens/settings_screen.dart.
+
+Objective: Create a secure and logical checkout flow, handling payment and shipping address validation.
+
+Requirements:
+
+Address Validation (Checkout):
+
+On the new lib/screens/checkout_screen.dart, before allowing payment, check if the user has a shipping address saved.
+
+If no address is found, make the user unable to pay. Instead, display a Form with TextFormFields for them to enter: Name, Phone Number, Address, Street, POSTAL CODE.
+
+This form must have a "Confirm" button that validates (using a GlobalKey<FormState>) and saves this address to the database via the backend API.
+
+Address Management (Settings):
+
+Modify the existing lib/screens/settings_screen.dart to also include a section where the user can add or edit their shipping address at any time.
+
+Payment System:
+
+On the lib/screens/checkout_screen.dart, display a debit/credit system (paying logic with VISA/MASTER CARD LOGO). These are for simulation only. Clicking them should show a brief loading indicator and then a "Payment Successful" message before navigating to Task 3.
+
+Also, display a PAYPAL BUTTON. This button must use legit logic. Integrate a suitable PayPal SDK (like flutter_paypal) to process a real transaction.
+
+Currency Symbol:
+
+CRITICAL: Ensure the Philippine Peso (PHP) currency symbol (₱) is used correctly on all screens displaying prices (Home, Product, Checkout, etc.). Use intl's NumberFormat.currency(locale: 'en_PH', symbol: '₱') for formatting to prevent errors.
+
+Task 5: Implement Flutter "Me" Profile Core & Order Management
+Files: Make lib/screens/profile_screen.dart fully functional. Utilize lib/screens/my_orders_screen.dart.
+
+Objective: Flesh out the user's profile screen ("Me" tab) to be the central hub for their account and orders.
+
+Requirements:
+
+Functional Profile: Make the lib/screens/profile_screen.dart functional. Load and display user information (name, email) from your AppProvider or AuthService. Ensure all existing buttons navigate correctly.
+
+Order Management Sections: Implement the logic for these buttons on the profile screen:
+
+To Pay
+
+To Ship
+
+To Receive
+
+Purchase History
+
+Order Display: Clicking any of the above buttons should navigate the user to lib/screens/my_orders_screen.dart. This screen must be enhanced (e.g., using a TabBar) to display separate lists of orders, filtered according to the status the user clicked (e.g., "To Ship" tab shows only orders with "To Ship" status).
+
+State Management: Ensure these lists update automatically. If an order status changes (e.g., from "To Ship" to "To Receive" after a backend update), the item must move from the "To Ship" list to the "To Receive" list. Use a ChangeNotifierProvider or similar state management solution to handle this.
+
+Task 6: Implement Flutter Post-Purchase Logic (Refunds & Ratings)
+Files: Modify lib/screens/my_orders_screen.dart. Create lib/screens/rate_item_screen.dart.
+
+Objective: Implement the user flows for refunding and rating completed orders.
+
+Requirements:
+
+Refund System:
+
+In the Purchase History section of lib/screens/my_orders_screen.dart, WHEN AN ITEM IS RECEIVED BY THE BUYER (i.e., status is "Delivered"), allow them to view the order details.
+
+Inside the order details, add a (REFUND ITEM) button.
+
+Clicking this button should initiate the refund logic (e.g., show a confirmation dialog, then send an API call to the backend to update the order status to "Refund Pending").
+
+Rating System ("To Rate"):
+
+Implement the To Rate section (this can be another tab on lib/screens/my_orders_screen.dart).
+
+This section must list all items from "Delivered" orders that have not yet been rated.
+
+Clicking an item here should navigate to the new lib/screens/rate_item_screen.dart.
+
+On this new screen, allow the user to provide a star rating (1-5 stars, use a package like flutter_rating_bar) and an optional text review.
+
+Submitting the rating must save it to the backend and remove the item from the "To Rate" list.
+
+Task 7: Implement Flutter User Engagement Features
+Files: Create lib/screens/my_likes_screen.dart. Create product detail pages (e.g., lib/screens/product_detail_screen.dart). Modify lib/screens/profile_screen.dart and/or lib/screens/home_screen.dart.
+
+Objective: Build features that track user preferences and history.
+
+Requirements:
+
+"My Likes" Logic:
+
+Create lib/screens/my_likes_screen.dart, accessible from the profile_screen.
+
+On product pages (which you must create), add a "like" button (e.g., a heart icon).
+
+This button must toggle its state and save the "liked" status to the backend for the specific user.
+
+The my_likes_screen.dart must fetch and display a list/grid of all items the user has liked.
+
+"Buy Again" Logic:
+
+Implement a "Buy Again" section (this could be a horizontal list on the profile_screen).
+
+This section should display items from the user's Purchase History to allow for easy re-ordering.
+
+"Recently Viewed" Logic:
+
+Implement tracking for viewed products. When a user visits a product_detail_screen.dart, add that item's ID to a list.
+
+Store this list (e.g., using SharedPreferences for simplicity or in the user's profile on the DB).
+
+Display a "Recently Viewed" section (e.g., on the home_screen or profile_screen) showing these items.
+
+"See More": (This is also listed in your prompt, but it is moved to Task 8 to be with other home screen tasks).
+
+Error Prevention: Ensure all buttons are working and all logic is functional. All state changes (like "liking" an item) must be persistent and reflected across the app.
+
+Task 8: Implement Flutter Home Screen & Notifications
+Files: Modify lib/screens/home_screen.dart. Enhance lib/services/notification_service.dart. Initialize in lib/main.dart.
+
+Objective: Finalize home screen content and implement a functional notification system.
+
+Requirements:
+
+Notification System:
+
+Implement a local notification system using flutter_local_notifications. Enhance the existing lib/services/notification_service.dart and initialize it properly in lib/main.dart.
+
+Ensure you request user permissions for notifications on app startup.
+
+The system must display the status of the order from the current_order.dart simulation.
+
+Example: In random time intervals matching the order simulation, it pops up a notification: today: 7:32 pm Your order(toy name) has been assigned a delivery driver.
+
+Sound: Make sure it will pop up notifications with a sound. Use the sound asset located at assets/sounds/notification.mp3.
+
+Home Screen Content:
+
+Make the "see more" button in the lib/screens/home_screen.dart work. It should navigate to a relevant screen, like the existing lib/screens/store_screen.dart.
+
+Add New Toys:
+
+Add 4 new toys for each employee: 4 for John Marwin, 4 for Prince, 4 for Janna, and 4 for Renz (16 new toys total).
+
+Ensure these toys are added to your backend data source (e.g., backend/data/ JSON files or database) so they appear in the app.

@@ -1,0 +1,42 @@
+modules = ["cpp-clang14", "web", "swift-5.8", "flutter", "dart-3.8"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "backend"
+
+[[workflows.workflow]]
+name = "backend"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && dart run bin/server.dart"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 40625
+externalPort = 3000
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["dart", "run", "backend/bin/server.dart"]
